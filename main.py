@@ -8,9 +8,9 @@ import torchaudio.transforms as T
 import numpy as np
 from googletrans import Translator
 import asyncio
-from sentence_transformers import SentenceTransformer
-import parselmouth
-from TTS.api import TTS
+#from sentence_transformers import SentenceTransformer
+#import parselmouth
+# from TTS.api import TTS
 
 async def create_mapping(words, translator):
     map = dict()
@@ -103,26 +103,41 @@ async def main_async():
     print(words_en_timestamps)
     print(word_energy)
 
-    waveform_tensor = torch.tensor(y).unsqueeze(0)
+    # Sampling
+    target_sr = 8000  # target "sampled" rate for simulation
+    sample_ratio = sr / target_sr
+    sampled_indices = np.arange(0, len(y), sample_ratio).astype(int)
+    sampled_y = y[sampled_indices]
 
-    mel_spectrogram = torchaudio.transforms.MelSpectrogram (
-        sample_rate=sr,
-        n_fft=1024,
-        hop_length=256,
-        n_mels=80
-    )
+    # Quantization
+    n_bits = 8  # 8-bit quantization
+    n_levels = 2 ** n_bits
+    quantized_y = np.round((sampled_y + 1) / 2 * (n_levels - 1))
+    quantized_y = quantized_y / (n_levels - 1) * 2 - 1
 
-    mel_spec = mel_spectrogram(waveform_tensor)  # shape: (1, n_mels, time)
-    print(mel_spec)
+    # Reconstruction
+    reconstructed_y = np.interp(np.arange(len(y)), sampled_indices, quantized_y)
 
-    tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
-    speaker_embedding = tts.get_speaker_embedding("reconstructed.wav")
-    print(speaker_embedding)
+    # Save
+    sf.write("reconstructed1.wav", reconstructed_y, sr)
+    print("Done")
+
+    # waveform_tensor = torch.tensor(y).unsqueeze(0)
+    #
+    # mel_spectrogram = torchaudio.transforms.MelSpectrogram (
+    #     sample_rate=sr,
+    #     n_fft=1024,
+    #     hop_length=256,
+    #     n_mels=80
+    # )
+    #
+    # mel_spec = mel_spectrogram(waveform_tensor)  # shape: (1, n_mels, time)
+    # print(mel_spec)
 
     # Extract pitch and energy
-    f0, _, _ = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+    # f0, _, _ = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
     # f0_tgt, _, _ = librosa.pyin(y_tgt, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-    rms = librosa.feature.rms(y=y)[0]
+    # rms = librosa.feature.rms(y=y)[0]
     # rms_tgt = librosa.feature.rms(y=y_tgt)[0]
 
     # convert to PyTorch tensor from numpy waveform and add another dimension
